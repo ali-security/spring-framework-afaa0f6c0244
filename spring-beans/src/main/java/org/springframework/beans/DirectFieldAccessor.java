@@ -48,6 +48,14 @@ import org.springframework.util.ReflectionUtils;
  */
 public class DirectFieldAccessor extends AbstractNestablePropertyAccessor {
 
+	/**
+	 * Effective auto-grow limit for on-demand {@code List} element access when
+	 * no explicit limit has been configured; matches
+	 * {@code DataBinder.DEFAULT_AUTO_GROW_COLLECTION_LIMIT}.
+	 */
+	private static final int DEFAULT_EFFECTIVE_AUTO_GROW_COLLECTION_LIMIT = 256;
+
+
 	private final Map<String, FieldPropertyHandler> fieldMap = new HashMap<>();
 
 
@@ -88,6 +96,22 @@ public class DirectFieldAccessor extends AbstractNestablePropertyAccessor {
 	@Override
 	protected DirectFieldAccessor newNestedPropertyAccessor(Object object, String nestedPath) {
 		return new DirectFieldAccessor(object, nestedPath, this);
+	}
+
+	/**
+	 * Fall back to a limit of 256 if no explicit auto-grow limit has been configured.
+	 * <p>{@code DataBinder.initDirectFieldAccess()} does not propagate the binder's
+	 * auto-grow limit to its DirectFieldAccessor in this version (spring-context
+	 * commit 30bdbb1438, gh-36861, is not present), leaving it at
+	 * {@code Integer.MAX_VALUE}. Without this fallback, arrays and typed
+	 * collections would be auto-grown, and a self-populating {@code List}
+	 * grown on demand, to any requested index.
+	 * Nested DirectFieldAccessors inherit this behavior.
+	 */
+	@Override
+	int getEffectiveAutoGrowCollectionLimit() {
+		int limit = getAutoGrowCollectionLimit();
+		return (limit != Integer.MAX_VALUE ? limit : DEFAULT_EFFECTIVE_AUTO_GROW_COLLECTION_LIMIT);
 	}
 
 	@Override

@@ -175,6 +175,16 @@ public abstract class AbstractNestablePropertyAccessor extends AbstractPropertyA
 	}
 
 	/**
+	 * Return the limit applied to array and collection auto-growing, and up to
+	 * which an out-of-bounds index may be delegated to {@link List#get(int)},
+	 * letting a self-populating {@code List} create the element on demand.
+	 * <p>Default is the configured {@link #getAutoGrowCollectionLimit() limit}.
+	 */
+	int getEffectiveAutoGrowCollectionLimit() {
+		return this.autoGrowCollectionLimit;
+	}
+
+	/**
 	 * Switch the target object, replacing the cached introspection results only
 	 * if the class of the new object is different to that of the replaced object.
 	 * @param object the new target object
@@ -301,7 +311,7 @@ public abstract class AbstractNestablePropertyAccessor extends AbstractPropertyA
 				Object convertedValue = convertIfNecessary(tokens.canonicalName, oldValue, pv.getValue(),
 						componentType, ph.nested(tokens.keys.length));
 				int length = Array.getLength(propValue);
-				if (arrayIndex >= length && arrayIndex < this.autoGrowCollectionLimit) {
+				if (arrayIndex >= length && arrayIndex < getEffectiveAutoGrowCollectionLimit()) {
 					Object newArray = Array.newInstance(componentType, arrayIndex + 1);
 					System.arraycopy(propValue, 0, newArray, 0, length);
 					int lastKeyIndex = tokens.canonicalName.lastIndexOf('[');
@@ -327,7 +337,7 @@ public abstract class AbstractNestablePropertyAccessor extends AbstractPropertyA
 			Object convertedValue = convertIfNecessary(tokens.canonicalName, oldValue, pv.getValue(),
 					requiredType.getResolvableType().resolve(), requiredType);
 			int size = list.size();
-			if (index >= size && index < this.autoGrowCollectionLimit) {
+			if (index >= size && index < getEffectiveAutoGrowCollectionLimit()) {
 				for (int i = size; i < index; i++) {
 					try {
 						list.add(null);
@@ -658,6 +668,14 @@ public abstract class AbstractNestablePropertyAccessor extends AbstractPropertyA
 					else if (value instanceof List list) {
 						int index = Integer.parseInt(key);
 						growCollectionIfNecessary(list, index, indexedPropertyName.toString(), ph, i + 1);
+						// Reject an out-of-bounds index unless auto-growing is enabled and the index
+						// is within the limit, in which case the List may create the element on demand.
+						if (index < 0 || (index >= list.size() &&
+								(!isAutoGrowNestedPaths() || index >= getEffectiveAutoGrowCollectionLimit()))) {
+							throw new InvalidPropertyException(getRootClass(), this.nestedPath + propertyName,
+									"Cannot get element with index " + index + " from List of size " +
+											list.size() + ", accessed using property path '" + propertyName + "'");
+						}
 						value = list.get(index);
 					}
 					else if (value instanceof Map map) {
@@ -772,7 +790,7 @@ public abstract class AbstractNestablePropertyAccessor extends AbstractPropertyA
 			return array;
 		}
 		int length = Array.getLength(array);
-		if (index >= length && index < this.autoGrowCollectionLimit) {
+		if (index >= length && index < getEffectiveAutoGrowCollectionLimit()) {
 			Class<?> componentType = array.getClass().componentType();
 			Object newArray = Array.newInstance(componentType, index + 1);
 			System.arraycopy(array, 0, newArray, 0, length);
@@ -796,7 +814,7 @@ public abstract class AbstractNestablePropertyAccessor extends AbstractPropertyA
 			return;
 		}
 		int size = collection.size();
-		if (index >= size && index < this.autoGrowCollectionLimit) {
+		if (index >= size && index < getEffectiveAutoGrowCollectionLimit()) {
 			Class<?> elementType = ph.getResolvableType().getNested(nestingLevel).asCollection().resolveGeneric();
 			if (elementType != null) {
 				for (int i = collection.size(); i < index + 1; i++) {
